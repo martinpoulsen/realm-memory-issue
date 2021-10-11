@@ -6,11 +6,10 @@
  * @flow strict-local
  */
 
-import React from 'react';
+import React, {useEffect} from 'react';
 import type {Node} from 'react';
 import {
   SafeAreaView,
-  ScrollView,
   StatusBar,
   StyleSheet,
   Text,
@@ -18,95 +17,91 @@ import {
   View,
 } from 'react-native';
 
-import {
-  Colors,
-  DebugInstructions,
-  Header,
-  LearnMoreLinks,
-  ReloadInstructions,
-} from 'react-native/Libraries/NewAppScreen';
+import {createRealmInstance} from './realm';
 
-const Section = ({children, title}): Node => {
-  const isDarkMode = useColorScheme() === 'dark';
-  return (
-    <View style={styles.sectionContainer}>
-      <Text
-        style={[
-          styles.sectionTitle,
+const routePointStub = {
+  lat: 11.11111,
+  lon: 22.22222,
+  alt: null,
+  accuracy: 5,
+  speed: -1,
+  course: null,
+  battery: -1,
+  invalid: null,
+  deletedAt: null,
+};
+
+const tripStub = {
+  route: [],
+};
+
+const getRoutePointUUID = id => `AAAAAAAA-AAAA-AAAA-AAAA-${id}`;
+
+const RealmMemoryIssue = () => {
+  let i = 0;
+  useEffect(() => {
+    console.log('App mount');
+    const realm = createRealmInstance();
+
+    const tripId = `trip_id_${new Date().getTime()}`;
+
+    realm.write(() => {
+      realm.create(
+        'Trip',
+        {
+          ...tripStub,
+          id: tripId,
+        },
+        true,
+      );
+    });
+
+    const interval = setInterval(() => {
+      const trip = realm.objects('Trip').filtered(`id == "${tripId}"`)[0];
+      console.log(
+        'retrieved trip',
+        trip.id, // without any route logging/stringifying // 1300 rp ~ 115 MB native memory usage
+        // JSON.stringify(trip.route.map(rp => rp.id)), // 1300 rp ~ 250 MB native memory usage
+        JSON.stringify(trip.route), // 1300 rp ~ 800 MB native memory usage (less than 100 MB for realm v. 10.2.0)
+      );
+
+      const newRoute = Array.from(trip.route);
+      const routePointId = getRoutePointUUID(i++);
+      newRoute.push({
+        ...routePointStub,
+        id: routePointId,
+        time: new Date(),
+      });
+
+      realm.write(() => {
+        realm.create(
+          'Trip',
           {
-            color: isDarkMode ? Colors.white : Colors.black,
+            id: trip.id,
+            updatedAt: new Date(),
+            route: newRoute,
           },
-        ]}>
-        {title}
-      </Text>
-      <Text
-        style={[
-          styles.sectionDescription,
-          {
-            color: isDarkMode ? Colors.light : Colors.dark,
-          },
-        ]}>
-        {children}
-      </Text>
-    </View>
-  );
+          true,
+        );
+      });
+      console.log('added route point to realm: ', routePointId);
+    }, 500);
+
+    return () => {
+      console.log('App unmount');
+      clearInterval(interval);
+    };
+  }, []);
+  return <Text>Realm Memory Issue</Text>;
 };
 
 const App: () => Node = () => {
-  const isDarkMode = useColorScheme() === 'dark';
-
-  const backgroundStyle = {
-    backgroundColor: isDarkMode ? Colors.darker : Colors.lighter,
-  };
-
   return (
-    <SafeAreaView style={backgroundStyle}>
-      <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} />
-      <ScrollView
-        contentInsetAdjustmentBehavior="automatic"
-        style={backgroundStyle}>
-        <Header />
-        <View
-          style={{
-            backgroundColor: isDarkMode ? Colors.black : Colors.white,
-          }}>
-          <Section title="Step One">
-            Edit <Text style={styles.highlight}>App.js</Text> to change this
-            screen and then come back to see your edits.
-          </Section>
-          <Section title="See Your Changes">
-            <ReloadInstructions />
-          </Section>
-          <Section title="Debug">
-            <DebugInstructions />
-          </Section>
-          <Section title="Learn More">
-            Read the docs to discover what to do next:
-          </Section>
-          <LearnMoreLinks />
-        </View>
-      </ScrollView>
+    <SafeAreaView>
+      <StatusBar barStyle={'light-content'} />
+      <RealmMemoryIssue />
     </SafeAreaView>
   );
 };
-
-const styles = StyleSheet.create({
-  sectionContainer: {
-    marginTop: 32,
-    paddingHorizontal: 24,
-  },
-  sectionTitle: {
-    fontSize: 24,
-    fontWeight: '600',
-  },
-  sectionDescription: {
-    marginTop: 8,
-    fontSize: 18,
-    fontWeight: '400',
-  },
-  highlight: {
-    fontWeight: '700',
-  },
-});
 
 export default App;
